@@ -304,21 +304,21 @@ initialAlmostOrder:=function(A)
 	return B0;
 end function;
 
-basisFromGens:=function(L)
+basisFromGens:=function(A,L)
 	D:=lcmList(&cat[denominatorsList(Coordinates(A,r)):r in L]);
-	M:=Matrix(R,[ElementToSequence(D*r): r in L]);
+	M:=Matrix(R,[Coordinates(A,D*r): r in L]);
 	H:=HermiteForm(M);
 	B:=[A![(1/D)*H[i,j]: j in [1..Dimension(A)]]: i in [1..Dimension(A)]];
 	return B;
 end function;
 	
-orderFromGens:=function(L)
-	return Order(R,basisFromGens(L));
+orderFromGens:=function(A,L)
+	return Order(R,basisFromGens(A,L));
 end function;
 
-lidealFromGens:=function(O,L)
+lidealFromGens:=function(A,O,L)
 	L:=[o*l: o in Basis(O),l in L];
-	return basisFromGens([o*l: o in Basis(O),l in L]);
+	return basisFromGens(A,[o*l: o in Basis(O),l in L]);
 end function;
 		
 /*Returns a list of length d containing the d lowest degree (possibly zero) coefficients of P*/
@@ -380,13 +380,13 @@ leftOrder:=function(A,I,D0,k)
 	L:=productsModD0(M,k,N,d);
 	LHS:=Matrix([explodeCoeffs([L[i,j,l+m]: m in [0..d-1], j in [1..N2]],d):l in [1..d], i in [1..N]]);
 	Ker:=Basis(Nullspace(LHS));
-	return orderFromGens([1/D0 * A!regroupCoeffs(ElementToSequence(V),d): V in Ker] cat Basis(A));
+	return orderFromGens(A,[1/D0 * A!regroupCoeffs(ElementToSequence(V),d): V in Ker] cat Basis(A));
 end function;	
 
 /*I is an ideal of O/gO. f is the projection map from O to O/gO.
 Outputs f^(-1)(I)*/
 pullbackIdeal:=function(A,f,g,O,I)
-	return lidealFromGens(O,[r @@ f: r in Basis(I)] cat [g*r: r in Basis(O)]);
+	return lidealFromGens(A,O,[r @@ f: r in Basis(I)] cat [g*r: r in Basis(O)]);
 end function;
 	
 arithmeticRadical:=function(A,O,g)
@@ -432,7 +432,7 @@ end function;
 
 maximalOrderFinite:=function(C:twice:=true)
 	B0:=initialAlmostOrder(C);
-	L:=orderFromGens(B0 cat [One(C)]);
+	L:=orderFromGens(C,B0 cat [One(C)]);
 	printf "Working with the following basis for the starting order: %o\n",Basis(L);
 	A,f:=ChangeBasis(C,Basis(L));
 	L:=Order(R,Basis(A));
@@ -462,7 +462,7 @@ maximalOrderInfinite:=function(C:twice:=true)
 	B0:=initialAlmostOrder(iC);
 	A,f:=ChangeBasis(iC,B0);
 	D0:=almostDisc(B0);
-	L:=orderFromGens(Basis(A) cat [One(A)]);
+	L:=orderFromGens(A,Basis(A) cat [One(A)]);
 	if IsDivisibleBy(D0,X) then
 		k:=quo<R | D0>;
 		L:=maximalOrdermodg(A,L,X,D0,k);
@@ -1347,4 +1347,3 @@ C:=AssociativeAlgebra(Quat);
 O:=maximalOrderFinite(C:twice:=false);
 almostDisc(Basis(O));
 */
-
