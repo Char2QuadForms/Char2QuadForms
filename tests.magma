@@ -1,0 +1,52 @@
+load "QuadFormChar2.magma";
+
+//Used to bug. keep in check
+//testWith(x+1,1/x,1,x/(x+1):toTheEnd:=true);
+//testWith(x,x+1,x+1,(x+1)/x:toTheEnd:=true);
+//testWith(x^2,1,1,1/(x+1):toTheEnd:=true); //(1,0,x,0) is an example of a solution
+//testWith(x^2+x+1,x,1,1:toTheEnd:=true); //((x+1)/x,1/x,x,x+1) is an example of a solution
+//testWith(1,x/(x+1),x+1,1/(x+1):toTheEnd:=true);
+//testWith(x,1/x,1,1:toTheEnd:=true);
+//testWith(1,1/x,1,1/x:toTheEnd:=true);
+//testWith(1,(x^2+x+1)/x,x^3+x,x^2/(x+1):toTheEnd:=true);
+//testWith(1,1/(x^3+x^2+x),1,1/x:toTheEnd:=true);	
+//testWith(1,1/x,1,1/(x^2+x):toTheEnd:=true);
+//testWith(1,1/x,1,1/x^3:toTheEnd:=true);
+//testWith(1,(x+1)/x^2,1,1:toTheEnd:=true);
+//testWith(1,x^2+x,1,1:toTheEnd:=true);
+
+//A small battery of tests with higher degree input
+
+/*
+print "Testing randomly generated quaternary form with increasing coefficient degrees.";
+for d:=1 to 5 do
+	try
+		testQuaternForm(:d:=d,toTheEnd:=true);
+	catch e
+		print "There was an error in the execution of testQuaternForm.";
+		print e;
+	end try;
+	print "********************************";
+end for;
+
+print "Testing randomly generated quaternary forms that are guaranteed to be isotropic.";
+for i:=1 to 5 do
+	try
+		testQuaternForm(:d:=1,isotropic:=true,toTheEnd:=true);
+	catch e
+		print "There was an error in the execution of testQuaternForm.";
+		print e;
+	end try;
+	print "********************************";
+end for;
+*/
+
+//This is a test with coefficients a1,a2,a3,a4 which results in a failure to compute a maximal order.
+
+/*
+//This was a problematic call to maximalOrderFinite
+Quat<i,j,k>:=QuaternionAlgebra<K | 1/x^3,1>;
+C:=AssociativeAlgebra(Quat);
+O:=maximalOrderFinite(C:twice:=false);
+almostDisc(Basis(O));
+*/

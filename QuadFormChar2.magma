@@ -144,7 +144,7 @@ end function;
 
 /*Randomly generates an n^2 dimensional algebra over K isomorphic to the order n square matrix algebra.
 The parameter d is the bound for the degree of the random entries of the matrix used for construction.*/
-randIsoMat:=function(n:d:=2)
+randIsoMat:=function(n:d:=1)
 	M:=MatrixAlgebra(K,n);
 	A1,g:=AssociativeAlgebra(M);
 	A,f:=scrambleBasis(A1:d:=d);
@@ -247,9 +247,8 @@ end function;
 
 /*Returns the norm of a line matrix*/
 norm := function(v)
-    return Max([sgnDegree(x) : x in ElementToSequence(v)]);
+    return Max([sgnDegree(x) : x in ElementToSequence(v) | x ne 0]);
 end function;
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //				Computing a maximal order of a Matrix algebra					//
@@ -433,15 +432,12 @@ end function;
 maximalOrderFinite:=function(C)
 	B0:=initialAlmostOrder(C);
 	L:=orderFromGens(C,B0 cat [One(C)]);
-	printf "Working with the following basis for the starting order: %o\n",Basis(L);
 	A,f:=ChangeBasis(C,Basis(L));
 	L:=Order(R,Basis(A));
 	D0:=almostDisc(Basis(A));
-	printf "The discriminant of B0 is %o.\n",D0;
 	k:=quo<R | D0>;
 	for fact in Factorisation(D0) do
 		g:=fact[1];
-		printf "Working with g=%o.\n",g;
 		L:=maximalOrdermodg(A,L,g,D0,k);
 	end for;
 	return Order(R,[r @@ f: r in Basis(L)]);
@@ -632,6 +628,7 @@ iShifts:=function(L,N)
 		end for;
 		Append(~bigL,acc2);
 		acc1:=acc2;
+		acc2:=[];
 	end for;
 	return bigL;
 end function;
@@ -728,6 +725,7 @@ solveTernForm:=function(a1,a2,c)
 end function;
 
 sgnDegree:=function(r)
+	assert r ne 0;
 	return Degree(Numerator(r)) - Degree(Denominator(r));
 end function;
 
