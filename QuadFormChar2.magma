@@ -1,0 +1,1340 @@
+k:=1;
+q:=2^k;
+if k eq 1 then
+	F:=FiniteField(q);
+else
+	F<s>:=FiniteField(q);
+end if;
+K<x>:=RationalFunctionField(F);
+R<X>:=IntegerRing(K);
+P:=ValuationRing(K);
+i:=hom<K -> K| 1/x>;
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//						Utility								//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+forward isSquareScalar;
+
+isSquarePoly:=function(P)
+	X:=Parent(P)![0,1];
+	L:=Terms(P);
+	if L eq [] then
+		return P;
+	end if;
+	Sqrt:=0;
+	for i->M in L do
+		c:=LeadingCoefficient(M);
+		d:=Degree(M);
+		if IsOdd(d) then
+			return false;
+		end if;
+		r,s:=isSquareScalar(c);
+		if not r then
+			return false;
+		end if;
+		Sqrt+:=eval "s*X^(d div 2)";
+	end for;
+	return true,Sqrt;
+end function;
+
+isSquareK:=function(R)
+	iP,P:=isSquarePoly(Numerator(R));
+	iQ,Q:=isSquarePoly(Denominator(R));
+	if iP and iQ then
+		return true,eval "P/Q";
+	end if;
+	return false;
+end function;
+
+isSquareScalar:=function(a)
+	L:=Parent(a);
+	if L cmpeq F then
+		r,t:=IsSquare(a);
+		return r,t;
+	elif L cmpeq R then
+		r,t:=isSquarePoly(a);
+		return r,t;
+	elif L cmpeq K then
+		r,t:=isSquareK(a);
+		return r,t;
+	else
+		error "Not implemented";
+	end if;
+end function;
+		
+
+trdDeg2:=function(a:A:=0)
+	if A cmpeq 0 then
+		A:=Parent(a);
+	end if;
+	M:=RepresentationMatrix(a,A);
+	Chi:=CharacteristicPolynomial(M);	
+	_,Sqrt:=isSquarePoly(Chi);
+	return Coefficient(Sqrt,Degree(Sqrt)-1);
+end function;
+
+trd:=function(a)
+	A:=Parent(a);
+	n:=Dimension(A);
+	if n eq 4 then
+		return trdDeg2(a:A:=A);
+	elif IsDivisibleBy(n,2) then
+		error "not implemented";
+	end if;
+	return 1/n*(Trace(a));
+end function;
+	
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//					Generating random exemples						//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*Random polynomial with degree lower or equal to n over our Galois field*/
+randPolyFF := function(n: nonZero:=false,precise:=false,InK:=false)
+	d:=n;
+	repeat
+		if not precise then
+			d := Random(n);
+		end if;
+		repeat
+			dom:=Random(F);
+		until dom ne 0;
+		p := R!([Random(F) :_ in [0..d-1]] cat [dom]);
+	until not (nonZero and (p eq R!0));
+	return p;
+end function;
+
+/*Random rational function with numerator and denominator degree lower or equal to n over our Galois field*/
+randRatFunFF := function(d: nonZero:=false)
+	repeat
+		x:= K!randPolyFF(d)/K!randPolyFF(d: nonZero:=true);
+	until (not nonZero) or x ne 0;
+	return x;
+end function;
+
+randQuaternaryForm:=function(:d:=2)
+	L:=[randRatFunFF(d): i in [1..10]];
+	return UpperTriangularMatrix(L);
+end function;
+
+randAlmostReducedQuaterForm:=function(:d:=2)
+	aOdds:=[randPolyFF(d: nonZero:=true): _ in [1,2]];
+	aEvens:=[randRatFunFF(d:nonZero:=true): _ in [1,2]];
+	return DiagonalJoin([UpperTriangularMatrix(K,[aOdds[i],aOdds[i],aOdds[i]*aEvens[i]]): i in [1,2]]),aOdds,aEvens;
+end function;
+
+randomAlg:=function(A:d:=2,unit:=false)
+	n:=Dimension(A);
+	repeat
+		x:=A![randRatFunFF(d): _ in [1..n]];
+	until (not unit) or IsUnit(x);
+	return x;
+	end function;
+
+scrambleBasis:=function(A:d:=1)
+	n:=Dimension(A);
+	repeat
+		M:=Matrix(K,[[randRatFunFF(d): _ in [1..4]]: _ in [1..4]]);
+	until Determinant(M) ne 0;
+	B:=[A!M[i]: i in [1..4]];
+	C,f:=ChangeBasis(A,B);
+	return C,f;
+end function;
+	
+
+/*Randomly generates an n^2 dimensional algebra over K isomorphic to the order n square matrix algebra.
+The parameter d is the bound for the degree of the random entries of the matrix used for construction.*/
+randIsoMat:=function(n:d:=2)
+	M:=MatrixAlgebra(K,n);
+	A1,g:=AssociativeAlgebra(M);
+	A,f:=scrambleBasis(A1:d:=d);
+	return A, g * f;
+end function;
+
+randIsoQuat:=function(:d:=2,scramble:=false)
+	a:=randRatFunFF(d:nonZero:=true);
+	b:=randRatFunFF(d:nonZero:=true);
+	B:=QuaternionAlgebra<K| a,b>;
+	Ba:=AssociativeAlgebra(B);
+	if scramble then
+		B:=scrambleBasis(Ba:d:=d);
+	end if;
+	return Ba;
+end function;	
+
+randIsotropicForm:=function(:d:=2)
+	A,f:=randIsoMat(2:d:=d);
+	Q:=UpperTriangularMatrix(K,[(i eq j) select Determinant(BasisElement(A,i) @@ f) else Determinant(M+N) + Determinant(M) + Determinant(N) where M is (BasisElement(A,i) @@ f) where N is (BasisElement(A,j) @@ f): j in [i..4], i in [1..4]]);
+	return Q,A,f;
+end function;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 						Utility	for sequences						//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*Swaps in place elements of index i and j in list L*/
+
+swap := procedure(i,j,~L)
+    a:=L[i];
+    L[i]:=L[j];
+    L[j]:=a;
+end procedure;
+
+shift:=function(L)
+	assert L ne [];
+	return [R!0] cat L[1..(#L-1)];
+end function;
+
+jShifts:=function(L,N)
+	bigL:=[L];
+	acc:=L;
+	for j:= 1 to N do
+		acc:=shift(acc);
+		Append(~bigL,acc);
+	end for;
+	return bigL;
+end function;
+
+permute:=function(L,sigma)
+	assert #sigma eq #L;
+	if L eq [] then
+		return [];
+	end if;
+	sL:=L;
+	for i->si in sigma do
+		sL[si]:=L[i];
+	end for;
+	return sL;
+end function;
+
+invertPerm:=function(sigma)
+	isigma:=[0: _ in sigma];	
+	for i->si in sigma do
+		isigma[si]:=i;
+	end for;
+	return isigma;
+end function;
+
+/*Returns sequence L of elements of F padded with 0s at the end until it reaches length n*/
+pad := function(L,n)
+	assert #L le n;
+	return L cat [F!0 : _ in [1..(n - #L)]];
+end function;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//						Utility for matrices						//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*Replaces the i-th column of M with C*/
+changeRow:=procedure(~M,R,i)
+	assert (NumberOfRows(R) eq 1);
+	n:=NumberOfColumns(R);
+	for j := 1 to n do
+		M[i,j]:=R[1,j];
+	end for;
+end procedure;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//				Utility functions for vectors of rational functions				//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*Returns the difference of the degrees of the numerator and of the denominator
+of r*/
+sgnDegree := function(r)
+    return (Degree(Numerator(r))-Degree(Denominator(r)));
+end function;
+
+
+/*Returns the norm of a line matrix*/
+norm := function(v)
+    return Max([sgnDegree(x) : x in ElementToSequence(v)]);
+end function;
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//				Computing a maximal order of a Matrix algebra					//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+monic:=function(P)
+	if P eq 0 then
+		return R!0;
+	end if;
+	return (LeadingCoefficient(R!P))^(-1) * P;
+end function;
+
+almostDisc:=function(xs)
+	n:=#xs;
+	M:=SymmetricMatrix(&cat[[trd(xs[i]*xs[j]): j in [1..i]]: i in [1..n]]);
+	return monic(R!Determinant(M));
+end function;
+
+//The Euclid algorithm does not appear to be implemented for polynomial rings over a field.
+gcd:=function(P,Q)
+	error if P eq 0 or Q eq 0, "One of the input polynomials in gcd is zero!";
+	a:=P;
+	b:=Q;
+	repeat
+		r:=a mod b;
+		a:=b;
+		b:=r;
+	until b eq 0;
+	return monic(a);
+end function;
+
+lcm:=function(P,Q)
+	return monic(R!(P*Q/gcd(P,Q)));
+end function;
+
+lcmList:=function(L)
+	r:=1;
+	for P in L do
+		r:=lcm(r,P);
+	end for;
+	return r;
+end function;
+
+denominatorsList:=function(L)
+	return [Denominator(r): r in L];
+end function;
+
+/*Computes the almost order from which to start our climb up to a maximal order*/
+initialAlmostOrder:=function(A)
+	D:=lcmList(&cat[&cat[denominatorsList(Coordinates(A,x)): x in L]: L in BasisProducts(A)]);
+	B0:=[D*r: r in Basis(A)];
+	return B0;
+end function;
+
+orderFromGens:=function(A,L)
+	D:=lcmList(&cat[denominatorsList(Coordinates(A,r)):r in L]);
+	M:=Matrix(R,[Coordinates(A,D*r): r in L]);
+	H:=HermiteForm(M);
+	B:=[A![(1/D)*H[i,j]: j in [1..Dimension(A)]]: i in [1..Dimension(A)]];
+	return Order(R,B);
+end function;
+		
+/*Returns a list of length d containing the d lowest degree (possibly zero) coefficients of P*/
+coefficientsUpTo:=function(P,d)
+	if P eq 0 then
+		return [0: _ in [1..d]];
+	end if;
+	return (Coefficients(P) cat [0: _ in [0..d-Degree(P)]])[1..d];
+end function;
+
+/*applies the previous function to a list of polynomials*/
+explodeCoeffs:=function(L,d)
+	return &cat[coefficientsUpTo(p,d): p in L];
+end function;
+
+/*Inverse operation to explodeCoeffs*/
+regroupCoeffs:=function(L,d)
+	lL:=#L;
+	assert IsDivisibleBy(lL,d);
+	return [R!L[i..i+d-1]: i in [1..lL by d]];
+end function;
+
+/*Returns the Fq-algebra O/gO for g in Fq[X]*/
+quotient:=function(O,g)
+	d:=Degree(g);
+	SC:=[[&cat[coefficientsUpTo(R!((X^(k+l))*r) mod R!g,d): r in ElementToSequence(O!(z*y))]: k in [0..d-1], y in Basis(O)]: l in [0..d-1], z in Basis(O)];
+	B:=AssociativeAlgebra<F,Dimension(O)*d|SC>;
+	f:=map<O -> B | r:->B!explodeCoeffs(ElementToSequence(r),d), y:->O!regroupCoeffs(Coordinates(B,y),d)>;
+	return B,f;
+end function;
+
+productsModD0:=function(M,k,N,d)
+	N2:=N^2;
+	t:=k!X;
+	L:=[];
+	for i:=1 to N do
+		I:=[];
+		for j:=1 to N2 do
+			acc:=k!M[i][j];
+			J:=[acc];
+			for l:=1 to 2*d-2 do
+				acc*:=t;
+				Append(~J,acc);
+			end for;
+			Append(~I,J);
+		end for;
+		Append(~L,I);
+	end for;
+	return L;
+end function;
+
+leftOrder:=function(A,I,D0,k)
+	P:=Matrix([Coordinates(A,r): r in Basis(I)]);
+	iP:=P^(-1);
+	d:=Degree(D0);
+	N:=Dimension(A);
+	N2:=N^2;
+	M:=Matrix([&cat[ElementToSequence(Matrix([Coordinates(A,z*y)])*iP): y in Basis(I)]: z in Basis(A)]);
+	L:=productsModD0(M,k,N,d);
+	LHS:=Matrix([explodeCoeffs([L[i,j,l+m]: m in [0..d-1], j in [1..N2]],d):l in [1..d], i in [1..N]]);
+	Ker:=Basis(Nullspace(LHS));
+	return orderFromGens(A,[1/D0 * A!regroupCoeffs(ElementToSequence(V),d): V in Ker] cat Basis(A));
+end function;	
+
+/*I is an ideal of O/gO. f is the projection map from O to O/gO.
+Outputs an O ideal preimage of I by f.*/
+pullbackIdeal:=function(f,g,O,I)
+	return lideal<O | [r @@ f: r in Basis(I)] cat [g*r: r in Basis(O)]>;
+end function;
+	
+fromBIdealToLeftOrder:=function(A,f,g,O,J,D0,k)
+	I:=pullbackIdeal(f,g,O,J);
+	L:=leftOrder(A,I,D0,k);
+	return L;
+end function;
+
+radicalClosureModg:=function(A,O,g,D0,k)
+	L2:=O;
+	repeat
+		L:=L2;
+		B,f:=quotient(L,g);
+		J:=JacobsonRadical(B);
+		L2:=fromBIdealToLeftOrder(A,f,g,L,J,D0,k);
+	until L eq L2;
+	return L2,B,J,f;
+end function;
+
+overOrderModg:=function(A,O,B,Jaco,f,g,D0,k)
+	C,h:=quo<B | Jaco>;
+	JCs:=IndecomposableSummands(C);
+	for JC in JCs do
+		J:=ideal<B | Basis(Jaco) cat [r @@ h : r in Basis(JC)]>;
+		L:=fromBIdealToLeftOrder(A,f,g,O,J,D0,k);
+		if L ne O then
+			B,f:=quotient(L,g);
+			return L,B,JacobsonRadical(B),f;
+		end if;
+	end for;
+	return O,B,J,f;
+end function;
+
+maximalOrdermodg:=function(A,O,g,D0,k)
+//	printf "We are now working on maximising the order at the place %o.\n",g;
+	L,B,J,f:=radicalClosureModg(A,O,g,D0,k);
+//	printf "After taking the radical closure, the discriminant is now %o.\n",almostDisc(Basis(L));
+	repeat
+		L2:=L;
+		L,B,J,f:=overOrderModg(A,L2,B,J,f,g,D0,k);
+//		printf "Did one call to overOrderModg and the discriminant is now %o.\n",almostDisc(Basis(L));
+	until L eq L2;
+	return L;
+end function;		
+
+maximalOrderFinite:=function(C:twice:=true)
+	B0:=initialAlmostOrder(C);
+	L:=orderFromGens(C,B0 cat [One(C)]);
+	A,f:=ChangeBasis(C,Basis(L));
+	L:=Order(R,Basis(A));
+	D0:=almostDisc(Basis(A));
+//	printf "The discriminant of B0 is %o.\n",D0;
+	k:=quo<R | D0>;
+	for fact in Factorisation(D0) do
+		g:=fact[1];
+		L:=maximalOrdermodg(A,L,g,D0,k);
+	end for;
+	D:=almostDisc(Basis(L));
+
+	if twice and D ne 1 then
+		print "There was an issue while computing the finite maximal order. We're scrambling the basis and trying one more time.";
+		S,f:=scrambleBasis(C:d:=1);
+		L:=$$(S:twice:=false);
+	end if;
+
+	error if D ne 1,"Error: after an execution of maximalOrderFinite we obtain an order with discriminant ",D;
+	return Order(R,[r @@ f: r in Basis(L)]);
+end function;
+
+maximalOrderInfinite:=function(C:twice:=true)
+	iBP:=[[[r @ i: r in ElementToSequence(x)]: x in L]: L in BasisProducts(C)];
+	iC:=AssociativeAlgebra<K, Dimension(C) | iBP>;
+	B0:=initialAlmostOrder(iC);
+	A,f:=ChangeBasis(iC,B0);
+	D0:=almostDisc(B0);
+	L:=orderFromGens(A,Basis(A) cat [One(A)]);
+	if IsDivisibleBy(D0,X) then
+		k:=quo<R | D0>;
+		L:=maximalOrdermodg(A,L,X,D0,k);
+	end if;
+	D:=almostDisc(Basis(L));
+
+	if twice and IsDivisibleBy(D,X) then
+		print "There was an issue while computing the infinite maximal order. We're scrambling the basis and trying one more time.";
+		S,f:=scrambleBasis(C:d:=1);
+		L:=$$(S:twice:=false);	
+		return Order(P,[r @@ f: r in Basis(L)]);
+	end if;
+
+	error if IsDivisibleBy(D,X),"Error: after an execution of maximalOrderFinite we obtain an order with discriminant ",D;
+
+	return Order(P, [C![r @ i: r in ElementToSequence(x @@ f)]: x in Basis(L)]);
+end function;
+		
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//					Lattice reduction functions						//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*Reduces a lattice basis in F_q[X]^n in place, using Lenstra's algorithm from [1]*/
+reduceLatBase := procedure(~B)
+    k:=0;
+	n:=NumberOfRows(B);
+	assert(n eq NumberOfColumns(B));
+    norms:=[norm(RowSubmatrix(B,i,1)) : i in [1..n]];
+    perms:=[];
+    while k lt n do
+        _,i:=Min(norms[k+1..n]);
+        B:=SwapRows(B,k+1,k+i);
+		swap(k+1,k+i,~norms);
+		if k gt 0 then
+			LHS:=Matrix(F,k,k,[[Coefficient(B[i,j],norms[i]) : j in [1..k]] : i in [1..k]]);
+			RHS:=Matrix(F,1,k,[Coefficient(B[k+1,j],norms[k+1]): j in [1..k]]);
+			r:=Solution(LHS,RHS);
+			b:=RowSubmatrix(B,k+1,1) - &+[r[1][i]*(X^(norms[k+1]-norms[i]))*RowSubmatrix(B,i,1) : i in [1..k]];
+			changeRow(~B,b,k+1);
+			N:=norm(b);
+		end if;
+		if k eq 0 or N eq norms[k+1] then
+			_,j0:=Max([sgnDegree(B[k+1,j]): j in [k+1..n]]);
+			B:=SwapColumns(B,k+1,k+j0);
+			Append(~perms,<k+1,k+j0>);
+			k+:=1;
+		else
+			norms[k+1]:=N;
+			i0:=Index([norms[i] gt norms[k+1] : i in [1..k+1]],true)-1;
+			if i0 ne -1 then
+				k:=i0;
+			end if;
+		end if;
+    end while;
+    Reverse(~perms);
+    for T in perms do
+        B:=SwapColumns(B,T[1],T[2]);
+    end for;
+end procedure;
+
+/*Reduces a lattice basis in F_q(X)^n in place, using Proposition 8 in [2]*/
+reduceRatLatBase := procedure(~B)
+	n:=NumberOfColumns(B);
+	assert(n eq NumberOfColumns(B));
+    g:=R!1;
+    for i := 1 to n do
+        for j := 1 to n do
+            g:= Lcm(g,Denominator(B[i,j]));
+        end for;
+    end for;
+    gB:=ChangeRing(g*B,R);
+    reduceLatBase(~gB);
+    B:=(1/g)*gB;
+end procedure;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//						Finite algebras							//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+proj:=function(L,k)
+	A:=Universe(L);
+	M:=(Matrix([ElementToSequence(x): x in L]))^(-1);
+	Images:=[];
+	for x in Basis(A) do
+		Append(~Images,&+[(Matrix([Coordinates(A,x)])*M)[1,i]*L[i]: i in [k+1..#L]]);
+	end for;
+	return hom<A -> A | Images>;
+end function;
+
+/*This is an implementation of the algorithm given in part 3 of [4].
+Returns a subalgebra of C isomorphic to C/J, where J is the Jacobson radical of C.*/
+//TODO: rewrite it cleaner using proj.
+WedderburnMalcev:=function(C:Jac:=0)
+	if Jac cmpeq 0 then
+		Jac:=JacobsonRadical(C);
+	end if;
+	BJac:=[C!x : x in Basis(Jac)];
+	n:=Dimension(C);
+	k:=n-#BJac;
+	if k eq n then
+		return C;
+	end if;
+	W,f:=VectorSpace(C);
+	g:=Inverse(f);
+	R:=sub<W | [f(x) : x in BJac]>;
+	V:=Complement(W,R);
+	NewBase:=[g(x):x in Basis(V)] cat BJac;
+	A:=ChangeBasis(C,NewBase);
+	W,f:=VectorSpace(A);
+	g:=Inverse(f);
+	BR:=Basis(A)[k+1..n];
+	BV:=Basis(A)[1..k];
+	dV:=k;
+	R:=sub<W | [f(x) : x in BR]>;
+	V:=Complement(W,R);
+	B:=Basis(A)[1..k];
+	repeat
+		Rtmp:=sub<R | [f(x*y) : x in Basis(A)[k+1..n], y in BR] cat [f(y*x) : x in Basis(A)[k+1..n], y in BR]>;
+		V:=Complement(R,Rtmp);
+		R:=Rtmp;
+		BV:=[g(x):x in Basis(V)];
+		BR:=[g(x):x in Basis(R)];
+		dV:=Dimension(V);
+		LHS:=Matrix([&cat[Coordinates(W,ReduceVector(R,f(B[i]*d[j] + d[i]*B[j] - &+[BasisProduct(A,i,j)[s]*d[s] : s in [1..k]]))) : i,j in [1..k]] :
+		d in [[A!0 : _ in [1..(i-1)]] cat [d] cat [A!0 : _ in [i+1..k]]: d in BV, i in [1..k]]]);
+		RHS:= Matrix([&cat[Coordinates(W,ReduceVector(R,f(&+[BasisProduct(A,i,j)[s]*B[s] : s in [1..k]] - B[i]*B[j]))) : i,j in [1..k]]]);
+		Sol:=Solution(LHS,RHS);
+		for i := 1 to k do
+			B[i]+:=&+[Sol[1][(i-1)*dV+j]*BV[j] : j in [1..dV]];
+		end for;
+	until Dimension(R) eq 0;
+	return sub<C | [&+[x[i]*e : i->e in NewBase] : x in B]>;
+end function;
+
+
+/*A is a simple algebra over F
+Returns an isomorphism from M_n(k) to A, with k the center of A.*/
+explIso:=function(A)
+	rcA,frcA:=AlgebraOverCenter(A);
+	k:=BaseField(rcA);
+	_,n:=IsSquare(Dimension(rcA));
+	I:=MinimalLeftIdeals(rcA:Limit:=1)[1];
+	LHS:=Matrix([&cat[Coordinates(I,x*y): y in Basis(I)]: x in Basis(rcA)]);
+	phi:=hom<MatrixAlgebra(k,n) -> rcA | M :-> rcA!ElementToSequence(Solution(LHS,Matrix(1,n^2,ElementToSequence(M))))>;
+	return phi * frcA;
+end function;
+
+/*A is a simple algebra over F.
+Returns a complete orthogonal decomposition in primitive idempotents of A*/
+decomposeSimple:=function(A)
+	if IsCommutative(A) then
+		return [A!1];
+	end if;
+	f:=explIso(A);	
+	M:=Domain(f);
+	n:=Degree(M);
+	return [f(x) : x in Basis(M)[1..n^2 by n+1]];
+end function;
+
+/*A is a finite algebra
+Returns a complete orthogonoal system of primitive idempotents of A*/
+orthSysOfPrimIdems:=function(A)
+	W:=WedderburnMalcev(A);
+	Ies := DirectSumDecomposition(W);
+	return &cat[[A!x : x in decomposeSimple(I)] : I in Ies];
+end function;
+	
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//				Computing isomorphism to a matrix algebra over K [2]				//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ointerOrders:=function(Bfi,Binf)
+	n:=#Bfi;
+	Mfi:=Matrix(K,n,n,[ElementToSequence(x): x in Bfi]);
+	Minf:=Matrix(K,n,n,[ElementToSequence(x):x in Binf]);
+	Mfi:=Mfi*Minf^(-1);
+	reduceRatLatBase(~Mfi);	
+	L:=[];
+	NewBase:=[];
+	Norms:=[];
+	for i := 1 to n do
+		V:=RowSubmatrix(Mfi,i,1);
+		k:=norm(V);
+		Append(~Norms,k);
+		a:=&+[V[1,j]*e:j->e in Binf];
+		for j := 0 to -k do
+			Append(~L,(x^j)*a);
+		end for;
+		Append(~NewBase,a);
+	end for;
+	O:=Order(R,NewBase);
+	M:=[];
+	for i := 1 to n do
+		if Norms[i] le 0 then
+			Mi:=[];
+			for j := 1 to n do
+				if Norms[j] le 0 then
+					Mj:=[];
+					Decompo:=Coordinates(O,NewBase[i]*NewBase[j]);
+					for k := 1 to n do
+						if Norms[k] le 0 then
+							Mj cat:= pad(Coefficients(R!Decompo[k]),-Norms[k]+1);
+						end if;
+					end for;
+					for k := 0 to -Norms[j] do
+						Append(~Mi,Rotate(Mj,k));
+					end for;
+				end if;
+			end for;
+			for k := 0 to -Norms[i] do
+				Append(~M,[Rotate(x,k) : x in Mi]);
+			end for;
+		end if;
+	end for;
+	return L,M;
+end function;
+
+orankOneIdempotent:=function(A)
+	Ofi:=maximalOrderFinite(A);
+	Oinf:=maximalOrderInfinite(A);
+	L,M:=ointerOrders(Basis(Ofi),Basis(Oinf));
+	C:=AssociativeAlgebra<F,#M | M>;
+	x:=orthSysOfPrimIdems(C);
+	es:=[&+[y[i]*l : i->l in L]: y in x];
+	return es[Index([Dimension(sub<A | [e*a*e : a in Basis(A)]>) : e in es],1)];
+end function;
+
+rebaseOfi:=function(Ofi,nA,phi)
+	M:=Matrix([Coordinates(nA,phi(e)): e in Basis(Ofi)]);
+	reduceRatLatBase(~M);
+	return Order(R,[nA!ElementToSequence(M[i]): i in [1..Dimension(nA)]]);
+end function;
+	
+
+iShifts:=function(L,N)
+	bigL:=[L];
+	acc1:=L;
+	acc2:=[];
+	for i:=1 to N do
+		for M in acc1 do
+			Append(~acc2,shift(M));
+		end for;
+		Append(~bigL,acc2);
+		acc1:=acc2;
+	end for;
+	return bigL;
+end function;
+			
+cicjInC:=function(Ofi,i,j,norms,goodIndices)
+	p:=Basis(Ofi)[i]*Basis(Ofi)[j];
+	coords:=Coordinates(Ofi,p);
+	coordsInC:=&cat[pad(Coefficients(R!coords[k]),-norms[k]+1): k in goodIndices];
+	return coordsInC;
+end function;
+	
+computeJCol:=function(Ofi,i,j,norms,goodIndices)
+	col:=cicjInC(Ofi,i,j,norms,goodIndices);
+	return jShifts(col,-norms[j]);
+end function;
+
+computeILine:=function(Ofi,i,norms,goodIndices)
+	line:=&cat[computeJCol(Ofi,i,j,norms,goodIndices): j in goodIndices];
+	return iShifts(line,-norms[i]);
+end function;
+
+returnMap:=function(C,nA,Ofi,norms,goodIndices)
+	cumulDims:=[0];
+	sum:=0;
+	for i in goodIndices do
+		sum+:=-norms[i]+1;
+		Append(~cumulDims,sum);
+	end for;
+	return map<C -> nA | c:->&+[R![c[k]: k in [cumulDims[i]+1..cumulDims[i+1]]]*Basis(Ofi)[j]: i->j in goodIndices]>;
+end function;
+
+interOrders:=function(A,Ofi,Oinf)
+	nA,phi:=ChangeBasis(A,Basis(Oinf));
+	Oinf:=Order(P,Basis(nA));
+	Ofi:=rebaseOfi(Ofi,nA,phi);
+//Now we have Ofi as a maximal R-order with a reduced basis, and coordinates in nA are written with respect to the basis of Oinf.
+//The algebra C is generated by the x^j c_i, where (c_i) is our basis of Ofi and 0 <= j <= -norm(c_i).
+	norms:=[norm(nA!c): c in Basis(Ofi)];
+	goodIndices:=[i: i in [1..Dimension(A)] | norms[i] le 0];
+	SC:=&cat[computeILine(Ofi,i,norms,goodIndices): i in goodIndices];
+	C:=AssociativeAlgebra<F,#SC|SC>;
+	f:=returnMap(C,nA,Ofi,norms,goodIndices);
+	return C,f * Inverse(phi);
+end function;
+
+
+/*Given an associative K-algebra A which is isomorphic to a 2x2 matrix algebra over K, returns a rank 1 idempotent element of A*/
+rankOneIdempotent:=function(A)
+	Ofi:=maximalOrderFinite(A);
+	Oinf:=maximalOrderInfinite(A);
+	C,f:=interOrders(A,Ofi,Oinf);
+	es:=[x @ f: x in orthSysOfPrimIdems(C)];
+	return es[Index([Dimension(sub<A | [e*a*e : a in Basis(A)]>) : e in es],1)];
+end function;
+		
+idemToIso:=function(A,e)
+	V:=Module(A);
+	W:=sub<V | [V!(e*X): X in Basis(A)]>;
+	assert Dimension(W) eq 2;
+	M,f:=AssociativeAlgebra(MatrixAlgebra(K,2));
+	Ims:=[Matrix(K,[Coordinates(W,W!((A!w)*X)): w in Basis(W)]) @ f: X in Basis(A)];
+	return hom<A -> M| Ims> * Inverse(f);
+end function;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//					Solving the quadratic form						//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+splitSquare:=function(a)
+	F:=Factorisation(a);
+	c:=1;
+	d:=1;
+	for f in F do
+		i:=Random(2*f[2]);
+		c*:=f[1]^i;
+		d*:=f[1]^(2*f[2]-i);
+	end for;
+	return c,d;
+end function;	
+
+/*The form solved is a1 x1^2 + a1 x1x2 + a1 a2 x2^2 + c x3*/
+osolveTernForm:=function(a1,a2,c)
+	A:=AssociativeAlgebra(QuaternionAlgebra<K | a2,a1/c>);
+	e:=orankOneIdempotent(A);
+	phi:=idemToIso(A,e);
+	x := Matrix(K,[[0,1],[0,0]]) @@ phi;
+	L:=Coordinates(A,x);
+	while L[1] eq 0 do
+		a:=randPolyFF(10);
+		c,d:=splitSquare(a);
+		x := Matrix(K,[[a,c],[d,a]]) @@ phi;
+		L:=Coordinates(A,x);
+	end while;
+	return L[3]/L[1],L[4]/L[1];
+end function;
+
+solveTernForm:=function(a1,a2,c)
+	A:=AssociativeAlgebra(QuaternionAlgebra<K | a2,a1/c>);
+	e:=rankOneIdempotent(A);
+	phi:=idemToIso(A,e);
+	x := Matrix(K,[[0,1],[0,0]]) @@ phi;
+	L:=Coordinates(A,x);
+	while L[1] eq 0 do
+		a:=randPolyFF(10);
+		c,d:=splitSquare(a);
+		x := Matrix(K,[[a,c],[d,a]]) @@ phi;
+		L:=Coordinates(A,x);
+	end while;
+	return L[3]/L[1],L[4]/L[1];
+end function;
+
+sgnDegree:=function(r)
+	return Degree(Numerator(r)) - Degree(Denominator(r));
+end function;
+
+bracket:=function(V,v)
+	L:=[e: e in Basis(V) | IsIndependent([v,e])];
+	i:=Index([DotProduct(v,e) ne 0: e in L],true);
+	if i ne 0 then
+		w:=L[i];
+	else
+		w:=L[1] + v;
+	end if;
+		return (1/DotProduct(v,w))*w;
+end function;
+	
+//The form described in lemma 4.5
+//Input: Q as a matrix
+//Output: [a1,b1,a2,b2],Matrix of the transformation
+canonicalForm:=function(Q)
+	V:=QuadraticSpace(Q);
+	if IsDegenerate(V) then
+		return true,[],0;
+	end if;
+	v1:=Basis(V)[1];
+	v2:=bracket(V,v1);
+	S:=OrthogonalComplement(V,sub<V | [v1,v2]>);
+	u1:=Basis(S)[1];
+	u2:=bracket(S,u1);
+	return false,[QuadraticNorm(v1),QuadraticNorm(v2),QuadraticNorm(u1),QuadraticNorm(u2)], Matrix(K,[Coordinates(V,v1),Coordinates(V,v2),Coordinates(V,u1),Coordinates(V,u2)]);
+end function;
+
+//The form described in Corollary 4.6
+//Input is in the same form as the output of canonicalForm
+//The output is the a1, a2, a3, a4
+reducedForm:=function(as)
+	D:=DiagonalMatrix([K|1,as[1],1,as[3]]);
+	return [as[1],as[1]*as[2],as[3],as[3]*as[4]],D;
+end function;
+
+symbol:=function(f,pi)
+	A:=quo<R | pi>;
+	return R!(&+[A!f^(2^i): i in [0..k*Degree(pi)-1]]);
+end function;
+
+minimalise:=function(a)
+	M:=Matrix(K,2,2,[1,0,0,1]);
+	g1:=Numerator(a);
+	h:=Denominator(a);
+	Fh:=Factorisation(h);
+	EvenFactors:=[<c[1],c[2]>: c in Fh | IsEven(c[2])];
+	for c in EvenFactors do
+		f:=c[1];
+		A:=quo<R | f>;
+		fr:=f^(c[2] div 2);
+		h1:=h/(fr^2);
+		g:=R!(A!(g1/h1)^(2^(k*Degree(f)-1)));
+		M:=Matrix(K,2,2,[1,0,g/fr,1])*M;
+		a:=(g^2*h1+g1+fr*h1*g)/h;
+		g1:=Numerator(a);
+		h:=Denominator(a);
+	end for;
+	d:=Degree(g1) - Degree(h);
+	while d gt 0 and IsEven(d) do
+		r:=d div 2;
+		_,c:=IsSquare(LeadingCoefficient(g1)/LeadingCoefficient(h));
+		M:=Matrix(K,2,2,[1,0,c*x^r,1])*M;
+		a:=a+c*x^r+c^2*x^(2*r);
+		g1:=Numerator(a);
+		h:=Denominator(a);
+		d:=Degree(g1) - Degree(h);
+	end while;
+	return a,M;
+end function;
+
+squareFreePart:=function(f)
+	P:=R!1;
+	C:=R!1;
+	f:=R!f;
+	for Fact in Factorization(f) do
+		q,r:=Quotrem(Fact[2],2);
+		if r eq 1 then
+			P*:=Fact[1];
+		end if;
+		C*:=Fact[1]^q;
+	end for;
+	return LeadingCoefficient(f)*P,C;
+end function;
+
+lastAdjustment:=function(as)
+	c:=lcm(Denominator(as[1]),Denominator(as[3]));
+	as:=[c^(i mod 2)*a: i->a in as];
+	c:=K!gcd(Numerator(as[1]),Numerator(as[3]));
+	as:=[a/(c^(i mod 2)): i->a in as];
+	print as;
+	a1,m1:=squareFreePart(as[1]);
+	a3,m3:=squareFreePart(as[3]);
+	a2,M2:=minimalise(as[2]);
+	a4,M4:=minimalise(as[4]);
+	return [a1,a2,a3,a4],DiagonalJoin((1/m1)*M2,(1/m3)*M4);
+end function;
+
+union:=procedure(~S,L)
+	for x in L do
+		Include(~S,x);
+	end for;
+end procedure;
+
+tupleToPoly:=function(t)
+	return R![x: x in t];
+end function;
+
+//Returns a list of all polynomials in R of degree N or lower.
+enumPolys:=function(N)
+	T:=CartesianPower(F,N+1);
+	return ([tupleToPoly(t): t in T]);
+end function;
+
+removeSquarePrimeDiv:=function(f,a)
+	n:=Valuation(a,f);
+	return a/f^(n-(n mod 2)),n;
+end function;
+
+genValues:=function(f,N,r,adjust,a1,a2)
+	vals:=[];
+	Polys:=enumPolys(Degree(f)*N-1);
+	k:=quo<R | f^N>;
+	for x1 in Polys do
+		for x2 in Polys do
+			res:=R!(k!((K!f)^adjust*a1*(x1^2+x1*x2+a2*x2^2)));
+			if res ne 0 then
+				nres:=Valuation(res,f);
+				if nres eq r or nres eq r-1 then
+					val,nval:=removeSquarePrimeDiv(f,res*f^(adjust mod 2));
+					Include(~vals,<val,nval mod 2,nres mod 2>);
+				end if;
+			end if;
+		end for;
+	end for;
+	return vals;
+end function;
+
+commonValuePole:=function(f,as)
+	Vals:=[Valuation(Denominator(as[i]),f): i in [2..4 by 2]];
+	PossibleValuesPoles:=[[],[]];
+	parityValC:=[[],[]];
+	Kf:=K!f;
+	for sel:=1 to 2 do
+		a1:=as[2*sel-1];
+		a2:=as[2*sel];
+		va1:=Valuation(a1,f);
+		if Vals[sel] gt 0 then
+			adjust:=Vals[sel]-va1;
+			N:=2*Vals[sel]+1;
+			PossibleValuesPoles[sel]:=[<x[1],x[2],x[3]>: x in genValues(f,N,Vals[sel],adjust,a1,a2)];
+		else
+			if symbol(a2,f) eq 0 then
+				parityValC[sel]:=[0,1];
+			else
+				parityValC[sel]:=[va1 mod 2];
+			end if;
+		end if;
+	end for;
+
+	if &and[v gt 0: v in Vals] then
+		L:=[];
+		for t in PossibleValuesPoles[1] do
+			i:=Index([s[1] eq t[1] : s in PossibleValuesPoles[2]],true);
+			if i ne 0 then
+				Append(~L,<t[1],t[2],Max(2*Vals[1]+1-t[3],2*Vals[2]+2-PossibleValuesPoles[2][i][3])>);
+			end if;
+		end for;
+	else
+		sel:=Index([v gt 0: v in Vals],true);
+		nsel:=3-sel;
+		L:=[<x[1],x[2],2*Vals[sel]+1-x[3]> : x in PossibleValuesPoles[sel] | x[2] in parityValC[nsel]];
+	end if;
+	if L eq [] then
+		return false,0,0,0;
+	end if;
+	i:=Index([x[2]: x in L],0);
+	if i eq 0 then
+		x:=L[1];
+	else
+		x:=L[i];
+	end if;
+	return true,x[1],x[2],f^x[3];
+end function;
+
+dealWithPoles:=function(as)
+	tested:=[];
+	conds:=[];
+	c:=R!1;
+	for f in Factorisation(Denominator(as[2])) cat Factorisation(Denominator(as[4])) do
+		if not f[1] in tested then
+			Append(~tested,f[1]);
+			found,h,mult,modu:=commonValuePole(f[1],as);
+			if not found then
+				printf "Working at the place %o, I could not find a common value for both binary forms. Therefore, this quadratic form is anisotropic.\n",f[1];
+				return false,[],0,[];
+			end if;
+			Append(~conds,<modu,h>);
+			c*:=f[1]^mult;
+		end if;
+	end for;
+	return true,conds,c,tested;
+end function;		
+
+commonValueOdds:=function(f,as)
+	syms:=[symbol(a,f):a in as[2..4 by 2]];
+	val:=[Valuation(a,f) mod 2: a in as[1..3 by 2]];
+	if syms[1] eq syms[2] then
+		if syms[1] eq 1 then
+			return false,0;
+		else
+			return true,0;
+		end if;
+	elif syms[1] eq val[1] then
+		return true,1;
+	else
+		return true,0;
+	end if;
+end function;
+
+dealWithOdds:=function(as,tested,c)
+	for f in Factorisation(R!as[1]) cat Factorisation(R!as[3]) do
+		if not f[1] in tested and IsOdd(f[2]) then
+			found,mult:=commonValueOdds(f[1],as);
+			if not found then
+				printf "Working at the place %o, I could not find a common value for both binary forms. Therefore, this quadratic form is anisotropic.\n",f[1];
+				return false,[],0;
+			end if;
+			c*:=f[1]^mult;
+		end if;
+	end for;
+	return true,c;
+end function;
+
+//Output: found,isCondAtInf,parityH,condInd,moduCondInf,DegMax,maybeAdjust
+dealWithInf:=function(as)
+	m:=-Max([Degree(as[1]),Degree(as[3])]);
+	ias:=[(x^m * as[1]) @ i,as[2] @ i,(x^m * as[3]) @ i,as[4] @ i];
+	ias[2]:=minimalise(ias[2]);
+	ias[4]:=minimalise(ias[4]);
+	printf "We are now dealing with the infinite place. After applying the an isomorphism, we work at the place X with the following coefficients: \n a1 = %o, a2 = %o, a3 = %o, a4 = %o \n",ias[1],ias[2],ias[3],ias[4];
+	if Max([Valuation(Denominator(ias[i]),X): i in [2..4 by 2]]) gt 0 then
+		found,hinf,_,modinf:=commonValuePole(X,ias);	
+	elif IsOdd(Degree(as[1]) + Degree(as[3])) then
+		found,mult:=commonValueOdds(X,ias);
+		hinf:=X^mult;
+		modinf:=1;
+	else
+		found:=true;
+		hinf:=1;
+		modinf:=1;
+	end if;
+	return found,hinf,modinf,m;
+end function;
+
+//tests if an irreducible polynomial h (doesn't test irreducibility) fulfills all the conditions to be the correct choice for splitting.
+testH:=function(conds,h,hinf,modinf,powinf)
+	for cond in conds do
+		k:=quo<R | cond[1]>;
+		if not k!(h) eq k!cond[2] then
+			return false;
+		end if;
+	end for;
+	if modinf ne 1 then
+		k:=quo<R | modinf>;
+		ih:= (x^(powinf)*h) @ i;
+		while not ih in R do
+			ih*:=x^2;
+		end while;
+		if not k!ih eq k!hinf then
+			return false;
+		end if;
+	end if;
+	return true;
+end function;
+
+findH:=function(conds,c,hinf,modinf,powinf)
+	d:=(Valuation(hinf,X) + powinf + Degree(c)) mod 2;
+	while true do
+		if d gt 0 then
+			Irrs:=PrimePolynomials(R,d);
+		else
+			Irrs:=[a: a in F | a ne 0];
+		end if;
+		for h in Irrs do
+			hc:=c*h;
+			if testH(conds,hc,hinf,modinf,powinf) then
+				return hc;
+			end if;
+		end for;
+		d+:=2;
+	end while;
+end function;
+
+solveQuaternaryForm:=function(Q:toTheEnd:=false,timing:=false)
+	deg,can,M1:=canonicalForm(Q);
+	if deg then
+		print "This quadratic form is degenerate. Solving aborted.";
+		return false,[];
+	end if;
+
+	//Dealing with the case where either a1 or a3 is zero, since then Corollary 4.6 does not apply
+	i:=2*Index(can[1..3 by 2], 0)-1;
+	if i ne -1 then
+		j:=4-i;
+		v:=[K!0: _ in [1..4]];
+		v[j]:=1;
+		v[i+1]:=1;
+		v[i]:=can[j]+can[i+1];
+		solVect:=Matrix(K,[v])*M1;
+		print "I found a zero coefficient while reducing the quadratic form.";
+		return true,ElementToSequence(solVect);
+	end if;
+
+	red,M2:=reducedForm(can);
+	as,M3:=lastAdjustment(red);
+	M:=M3*M2*M1;
+	printf "After reducing the form, we obtain the following coefficients: \na1 = %o\na2 = %o\na3 = %o\na4 = %o.\n\n",as[1],as[2],as[3],as[4];
+
+	//Dealing with the case where a2 or a4 is zero
+	i:=2*Index(as[2..4 by 2],0);
+	if i ne 0 then
+		j:=5-i;
+		v:=[K!0: _ in [1..4]];
+		v[j]:=1;
+		v[i-1]:=1;
+		v[i]:=1+as[j]/as[i-1];
+		solVect:=Matrix(K,[v])*M;
+		return true,ElementToSequence(solVect);
+	end if;
+	
+	//Now that pathological cases have been dealt with, we can work on splitting the quaternary form.
+	worked1,conds,c,tested:=dealWithPoles(as);
+	if not worked1 then
+		return false,[];
+	end if;
+	worked2,c:=dealWithOdds(as,tested,c);
+	if not worked2 then
+		return false,[];
+	end if;
+	worked3,hinf,modinf,powinf:=dealWithInf(as);
+	if not worked3 then
+		printf "Working at the infinite place, I could not find a common value for both binary forms. Therefore, this quadratic form is anisotropic.\n";
+		return false,[];
+	end if;
+	printf "--------------- \n All modular conditions for splitting have been determined. I did not find any obstacle to the form's isotropy. I now need to find a prime polynomial which satisfies all the modular conditions.\n I will call findH with the following input: \n conds: \n %o \n c : %o \n hinf: %o\n modinf: %o \n powinf: %o\n",conds,c,hinf,modinf,powinf;
+
+	h:=findH(conds,c,hinf,modinf,powinf);
+	printf "--------- \n I found H = %o. It should be a common value of both binary forms.\n",h;
+	if toTheEnd then
+		if timing then
+			time x1,x2:=solveTernForm(as[1],as[2],h);
+			time x3,x4:=solveTernForm(as[3],as[4],h);
+			print "The two times displayed above are the time it took for each execution of solveTernForm.";
+		else
+			x1,x2:=solveTernForm(as[1],as[2],h);
+			x3,x4:=solveTernForm(as[3],as[4],h);
+		end if;
+		solVect:=Matrix(K,[[x1,x2,x3,x4]])*M;
+		return true,ElementToSequence(solVect);
+	end if;
+
+	return true,[];
+end function;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//						Test Procedures							//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+testCanonicalForm:=procedure()
+Q:=randQuaternaryForm();
+print Q;
+Norms,Vects:=canonicalForm(Q);
+print Norms;
+printf "Are the brackets correct? %o \n",DotProduct(Vects[1],Vects[2]) eq 1 and DotProduct(Vects[3],Vects[4]) eq 1;
+printf "Are they orthogonal? %o \n",&and[DotProduct(e,f) eq 0: e in Vects[1..2], f in Vects[3..4]];
+end procedure;
+
+//maximalOrderFinite works for matrix algebras over K. It is still pretty slow when the discriminant of the initial order has degree over 32
+testMaximalOrderFinite:=procedure(:b:=16,d:=1,quats:=false,n:=2)
+	repeat
+		if quats then
+			A:=randIsoQuat();	
+		else
+			A:=randIsoMat(2:d:=d);
+		end if;
+	until Degree(almostDisc(initialAlmostOrder(A))) le b;	//For now, the execution time grows quickly with the Discriminant of the inital order. 32 takes between 15 and 30 seconds.
+	if not quats then
+		D:=K!1;
+	end if;
+	print "Timing the call to maximalOrderFinite";
+	time O:=maximalOrderFinite(A);
+	if not quats then
+		printf "We test that the order is maximal in A and get %o.\n", almostDisc(Basis(O)) eq monic(D)^2;
+	end if;
+end procedure;
+
+testMaximalOrderInfinite:=function(:b:=16,n:=2)
+	repeat
+		A:=randIsoMat(2);
+	until Degree(almostDisc(initialAlmostOrder(A))) le b;	//For now, the execution time grows quickly with the Discriminant of the inital order. 32 takes between 15 and 30 seconds.
+	print "Timing the call to maximalOrderInfinite";
+	time O:=maximalOrderInfinite(A);
+	return O;
+end function;
+
+testRankOneIdem:=function(n)
+	A:=randIsoMat(n);
+	print "Timing the call to rankOneIdempotent:";
+	time e:=rankOneIdempotent(A);
+	printf "We test that the output is a rank one idempotent of A, and obtain %o.\n",e in A and e^2 eq e and Dimension(sub<A | [e*a*e : a in Basis(A)]>) eq 1;
+	return e;
+end function;
+
+testTernForm:=procedure(a1,a2,c)
+	printf "Solving the following equation: %o x1^2 + %o x1 x2 + %o x2^2 = c \n",a1,a1,a1*a2;
+	x1,x2:=solveTernForm(a1,a2,c);
+	printf "Found the following solution: x1 = %o and x2 = %o.\n",x1,x2;
+	printf "Checking that the solution is correct... %o\n",a1*x1^2 + a1 * x1 * x2 + a1*a2*x2^2 eq c;
+end procedure;
+
+checkSolution:=function(aOdds,aEvens,xOdds,xEvens)
+	return &+[aOdds[i]*(xOdds[i]^2+xOdds[i]*xEvens[i]+aEvens[i]*xEvens[i]^2): i in [1,2]] eq 0;
+end function;
+
+quatFormEval:=function(Q,xs)
+	return &+[Q[i,j]*xs[i]*xs[j]: i,j in [1..4]];
+end function;
+
+/* Flags:
+d is the degree of the random polynomials appearing in the generation of the quadratic form Q.
+reduced, if true, sets the procedure to generate values a1,a2,a3,a4 instead of a generic non degenerate quadratic form.
+isotropic, if true, generates the matrix Q from scrambling the basis of a matrix algebra. As as result, the quadratic form can not be anisotropic.
+Note: The flag reduced and isotropic are not compatible. If both are set on, isotropic will be ignored
+newImpl decides the use of the newer implementation of interOrders. Should always be left on true.
+toTheEnd: If set on true, the procedure will compute a solution of the quadratic form. If set on false, the procedure will simply compute a common value of both binary forms, but it will not call the ternary form solver. This is useful on the calculator, when computing maximalOrder might be to expensive but we still want to see the result of the splitting.
+*/
+
+testQuaternForm:=procedure(:d:=2,reduced:=false,isotropic:=false,toTheEnd:=false)
+	if reduced then
+		if isotropic then
+			print "Flag isotropic ignored because flag reduced is also set";
+		end if;
+		Q:=randAlmostReducedQuaterForm(:d:=d);
+	elif isotropic then
+		Q:=randIsotropicForm(:d:=d);
+	else
+		Q:=randQuaternaryForm(:d:=d);
+	end if;
+	printf "We are about to test solveQuaternaryForm. Our quadratic form is defined by the following matrix:\n%o\n",Q;
+	time found,xs:=solveQuaternaryForm(Q:toTheEnd:=toTheEnd,timing:=true);
+	print "Right above is the time it took to execute solveQuaternaryForm";
+	if toTheEnd and found then
+		s:=quatFormEval(Q,xs);
+		print "-----";
+		printf "So, the solution we found in the end is as follows: \n%o\n When we plug it in the quadratic form, we obtain %o.\n",xs,s;
+	end if;
+end procedure;
+
+testWith:=procedure(a1,a2,a3,a4:toTheEnd:=false)
+	Q:=DiagonalJoin(UpperTriangularMatrix(K,[a1,a1,a1*a2]),UpperTriangularMatrix(K,[a3,a3,a3*a4]));
+	print Q;
+	time found,xs := solveQuaternaryForm(Q:toTheEnd:=toTheEnd,timing:=true);
+	print "Right above is the time it took to execute solveQuaternaryForm";
+	if toTheEnd and found then
+		s:=&+[Q[i,j]*xs[i]*xs[j]: i,j in [1..4]];
+		print "-----";
+		printf "So, the solution we found in the end is as follows: \n%o\n When we plug it in the quadratic form, we obtain %o.\n",xs,s;
+	end if;
+end procedure;
+
+
+//Used to bug. keep in check
+//testWith(x+1,1/x,1,x/(x+1):toTheEnd:=true);
+//testWith(x,x+1,x+1,(x+1)/x:toTheEnd:=true);
+//testWith(x^2,1,1,1/(x+1):toTheEnd:=true); //(1,0,x,0) is an example of a solution
+//testWith(x^2+x+1,x,1,1:toTheEnd:=true); //((x+1)/x,1/x,x,x+1) is an example of a solution
+//testWith(1,x/(x+1),x+1,1/(x+1):toTheEnd:=true);
+//testWith(x,1/x,1,1:toTheEnd:=true);
+//testWith(1,1/x,1,1/x:toTheEnd:=true);
+//testWith(1,(x^2+x+1)/x,x^3+x,x^2/(x+1):toTheEnd:=true);
+//testWith(1,1/(x^3+x^2+x),1,1/x:toTheEnd:=true);	
+
+//Problem in the idempotent computation.
+//testWith(1,1/x,1,1/(x^2+x):toTheEnd:=true);			//interOrder fails here
+//testWith(1,1/x,1,1/x^3:toTheEnd:=true);			//maximalOrder returns a non maximal order
+
+//Reduction step minimalise (from lemma 4.14) produces a2 = 0 for these examples
+//testWith(1,(x+1)/x^2,1,1:toTheEnd:=true);
+//testWith(1,x^2+x,1,1:toTheEnd:=true);
+
+//A small battery of tests with higher degree input
+
+/*
+print "Testing randomly generated quaternary form with increasing coefficient degrees.";
+for d:=1 to 5 do
+	try
+		testQuaternForm(:d:=d,toTheEnd:=true);
+	catch e
+		print "There was an error in the execution of testQuaternForm.";
+		print e;
+	end try;
+	print "********************************";
+end for;
+
+print "Testing randomly generated quaternary forms that are guaranteed to be isotropic.";
+for i:=1 to 5 do
+	try
+		testQuaternForm(:d:=1,isotropic:=true,toTheEnd:=true);
+	catch e
+		print "There was an error in the execution of testQuaternForm.";
+		print e;
+	end try;
+	print "********************************";
+end for;
+/*
+
+//This is a test with coefficients a1,a2,a3,a4 which results in a failure to compute a maximal order.
+/*
+//This is a problematic call to maximalOrderFinite
+B:=QuaternionAlgebra<K | 1/x^3,1>;
+C:=AssociativeAlgebra(B);
+maximalOrderFinite(C);
+*/
+
