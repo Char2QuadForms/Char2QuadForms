@@ -10,7 +10,6 @@ R<X>:=IntegerRing(K);
 P:=ValuationRing(K);
 i:=hom<K -> K| 1/x>;
 
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //						Utility								//
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -305,12 +304,21 @@ initialAlmostOrder:=function(A)
 	return B0;
 end function;
 
-orderFromGens:=function(A,L)
+basisFromGens:=function(L)
 	D:=lcmList(&cat[denominatorsList(Coordinates(A,r)):r in L]);
-	M:=Matrix(R,[Coordinates(A,D*r): r in L]);
+	M:=Matrix(R,[ElementToSequence(D*r): r in L]);
 	H:=HermiteForm(M);
 	B:=[A![(1/D)*H[i,j]: j in [1..Dimension(A)]]: i in [1..Dimension(A)]];
-	return Order(R,B);
+	return B;
+end function;
+	
+orderFromGens:=function(L)
+	return Order(R,basisFromGens(L));
+end function;
+
+lidealFromGens:=function(O,L)
+	L:=[o*l: o in Basis(O),l in L];
+	return basisFromGens([o*l: o in Basis(O),l in L]);
 end function;
 		
 /*Returns a list of length d containing the d lowest degree (possibly zero) coefficients of P*/
@@ -363,47 +371,48 @@ productsModD0:=function(M,k,N,d)
 end function;
 
 leftOrder:=function(A,I,D0,k)
-	P:=Matrix([Coordinates(A,r): r in Basis(I)]);
+	P:=Matrix([Coordinates(A,r): r in I]);
 	iP:=P^(-1);
 	d:=Degree(D0);
 	N:=Dimension(A);
 	N2:=N^2;
-	M:=Matrix([&cat[ElementToSequence(Matrix([Coordinates(A,z*y)])*iP): y in Basis(I)]: z in Basis(A)]);
+	M:=Matrix([&cat[ElementToSequence(Matrix([Coordinates(A,z*y)])*iP): y in I]: z in Basis(A)]);
 	L:=productsModD0(M,k,N,d);
 	LHS:=Matrix([explodeCoeffs([L[i,j,l+m]: m in [0..d-1], j in [1..N2]],d):l in [1..d], i in [1..N]]);
 	Ker:=Basis(Nullspace(LHS));
-	return orderFromGens(A,[1/D0 * A!regroupCoeffs(ElementToSequence(V),d): V in Ker] cat Basis(A));
+	return orderFromGens([1/D0 * A!regroupCoeffs(ElementToSequence(V),d): V in Ker] cat Basis(A));
 end function;	
 
 /*I is an ideal of O/gO. f is the projection map from O to O/gO.
-Outputs an O ideal preimage of I by f.*/
-pullbackIdeal:=function(f,g,O,I)
-	return lideal<O | [r @@ f: r in Basis(I)] cat [g*r: r in Basis(O)]>;
+Outputs f^(-1)(I)*/
+pullbackIdeal:=function(A,f,g,O,I)
+	return lidealFromGens(O,[r @@ f: r in Basis(I)] cat [g*r: r in Basis(O)]);
 end function;
 	
-fromBIdealToLeftOrder:=function(A,f,g,O,J,D0,k)
-	I:=pullbackIdeal(f,g,O,J);
-	L:=leftOrder(A,I,D0,k);
-	return L;
+arithmeticRadical:=function(A,O,g)
+	B,f:=quotient(O,g);
+	J:=JacobsonRadical(B);
+	I:=pullbackIdeal(A,f,g,O,J);
+	return I,B,f,J;
 end function;
 
 radicalClosureModg:=function(A,O,g,D0,k)
 	L2:=O;
 	repeat
 		L:=L2;
-		B,f:=quotient(L,g);
-		J:=JacobsonRadical(B);
-		L2:=fromBIdealToLeftOrder(A,f,g,L,J,D0,k);
+		I,B,f,J:=arithmeticRadical(A,L,g);
+		L2:=leftOrder(A,I,D0,k);
 	until L eq L2;
 	return L2,B,J,f;
 end function;
-
+	
 overOrderModg:=function(A,O,B,Jaco,f,g,D0,k)
 	C,h:=quo<B | Jaco>;
 	JCs:=IndecomposableSummands(C);
 	for JC in JCs do
 		J:=ideal<B | Basis(Jaco) cat [r @@ h : r in Basis(JC)]>;
-		L:=fromBIdealToLeftOrder(A,f,g,O,J,D0,k);
+		I:=pullbackIdeal(A,f,g,O,J);
+		L:=leftOrder(A,I,D0,k);
 		if L ne O then
 			B,f:=quotient(L,g);
 			return L,B,JacobsonRadical(B),f;
@@ -413,27 +422,26 @@ overOrderModg:=function(A,O,B,Jaco,f,g,D0,k)
 end function;
 
 maximalOrdermodg:=function(A,O,g,D0,k)
-//	printf "We are now working on maximising the order at the place %o.\n",g;
 	L,B,J,f:=radicalClosureModg(A,O,g,D0,k);
-//	printf "After taking the radical closure, the discriminant is now %o.\n",almostDisc(Basis(L));
 	repeat
 		L2:=L;
 		L,B,J,f:=overOrderModg(A,L2,B,J,f,g,D0,k);
-//		printf "Did one call to overOrderModg and the discriminant is now %o.\n",almostDisc(Basis(L));
 	until L eq L2;
 	return L;
 end function;		
 
 maximalOrderFinite:=function(C:twice:=true)
 	B0:=initialAlmostOrder(C);
-	L:=orderFromGens(C,B0 cat [One(C)]);
+	L:=orderFromGens(B0 cat [One(C)]);
+	printf "Working with the following basis for the starting order: %o\n",Basis(L);
 	A,f:=ChangeBasis(C,Basis(L));
 	L:=Order(R,Basis(A));
 	D0:=almostDisc(Basis(A));
-//	printf "The discriminant of B0 is %o.\n",D0;
+	printf "The discriminant of B0 is %o.\n",D0;
 	k:=quo<R | D0>;
 	for fact in Factorisation(D0) do
 		g:=fact[1];
+		printf "Working with g=%o.\n",g;
 		L:=maximalOrdermodg(A,L,g,D0,k);
 	end for;
 	D:=almostDisc(Basis(L));
@@ -454,7 +462,7 @@ maximalOrderInfinite:=function(C:twice:=true)
 	B0:=initialAlmostOrder(iC);
 	A,f:=ChangeBasis(iC,B0);
 	D0:=almostDisc(B0);
-	L:=orderFromGens(A,Basis(A) cat [One(A)]);
+	L:=orderFromGens(Basis(A) cat [One(A)]);
 	if IsDivisibleBy(D0,X) then
 		k:=quo<R | D0>;
 		L:=maximalOrdermodg(A,L,X,D0,k);
@@ -1328,13 +1336,15 @@ for i:=1 to 5 do
 	end try;
 	print "********************************";
 end for;
-/*
+*/
 
 //This is a test with coefficients a1,a2,a3,a4 which results in a failure to compute a maximal order.
+
 /*
-//This is a problematic call to maximalOrderFinite
-B:=QuaternionAlgebra<K | 1/x^3,1>;
-C:=AssociativeAlgebra(B);
-maximalOrderFinite(C);
+//This was a problematic call to maximalOrderFinite
+Quat<i,j,k>:=QuaternionAlgebra<K | 1/x^3,1>;
+C:=AssociativeAlgebra(Quat);
+O:=maximalOrderFinite(C:twice:=false);
+almostDisc(Basis(O));
 */
 
