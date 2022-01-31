@@ -430,7 +430,7 @@ maximalOrdermodg:=function(A,O,g,D0,k)
 	return L;
 end function;		
 
-maximalOrderFinite:=function(C:twice:=true)
+maximalOrderFinite:=function(C)
 	B0:=initialAlmostOrder(C);
 	L:=orderFromGens(C,B0 cat [One(C)]);
 	printf "Working with the following basis for the starting order: %o\n",Basis(L);
@@ -444,19 +444,10 @@ maximalOrderFinite:=function(C:twice:=true)
 		printf "Working with g=%o.\n",g;
 		L:=maximalOrdermodg(A,L,g,D0,k);
 	end for;
-	D:=almostDisc(Basis(L));
-
-	if twice and D ne 1 then
-		print "There was an issue while computing the finite maximal order. We're scrambling the basis and trying one more time.";
-		S,f:=scrambleBasis(C:d:=1);
-		L:=$$(S:twice:=false);
-	end if;
-
-	error if D ne 1,"Error: after an execution of maximalOrderFinite we obtain an order with discriminant ",D;
 	return Order(R,[r @@ f: r in Basis(L)]);
 end function;
 
-maximalOrderInfinite:=function(C:twice:=true)
+maximalOrderInfinite:=function(C)
 	iBP:=[[[r @ i: r in ElementToSequence(x)]: x in L]: L in BasisProducts(C)];
 	iC:=AssociativeAlgebra<K, Dimension(C) | iBP>;
 	B0:=initialAlmostOrder(iC);
@@ -467,17 +458,6 @@ maximalOrderInfinite:=function(C:twice:=true)
 		k:=quo<R | D0>;
 		L:=maximalOrdermodg(A,L,X,D0,k);
 	end if;
-	D:=almostDisc(Basis(L));
-
-	if twice and IsDivisibleBy(D,X) then
-		print "There was an issue while computing the infinite maximal order. We're scrambling the basis and trying one more time.";
-		S,f:=scrambleBasis(C:d:=1);
-		L:=$$(S:twice:=false);	
-		return Order(P,[r @@ f: r in Basis(L)]);
-	end if;
-
-	error if IsDivisibleBy(D,X),"Error: after an execution of maximalOrderFinite we obtain an order with discriminant ",D;
-
 	return Order(P, [C![r @ i: r in ElementToSequence(x @@ f)]: x in Basis(L)]);
 end function;
 		
@@ -634,61 +614,6 @@ end function;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //				Computing isomorphism to a matrix algebra over K [2]				//
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-ointerOrders:=function(Bfi,Binf)
-	n:=#Bfi;
-	Mfi:=Matrix(K,n,n,[ElementToSequence(x): x in Bfi]);
-	Minf:=Matrix(K,n,n,[ElementToSequence(x):x in Binf]);
-	Mfi:=Mfi*Minf^(-1);
-	reduceRatLatBase(~Mfi);	
-	L:=[];
-	NewBase:=[];
-	Norms:=[];
-	for i := 1 to n do
-		V:=RowSubmatrix(Mfi,i,1);
-		k:=norm(V);
-		Append(~Norms,k);
-		a:=&+[V[1,j]*e:j->e in Binf];
-		for j := 0 to -k do
-			Append(~L,(x^j)*a);
-		end for;
-		Append(~NewBase,a);
-	end for;
-	O:=Order(R,NewBase);
-	M:=[];
-	for i := 1 to n do
-		if Norms[i] le 0 then
-			Mi:=[];
-			for j := 1 to n do
-				if Norms[j] le 0 then
-					Mj:=[];
-					Decompo:=Coordinates(O,NewBase[i]*NewBase[j]);
-					for k := 1 to n do
-						if Norms[k] le 0 then
-							Mj cat:= pad(Coefficients(R!Decompo[k]),-Norms[k]+1);
-						end if;
-					end for;
-					for k := 0 to -Norms[j] do
-						Append(~Mi,Rotate(Mj,k));
-					end for;
-				end if;
-			end for;
-			for k := 0 to -Norms[i] do
-				Append(~M,[Rotate(x,k) : x in Mi]);
-			end for;
-		end if;
-	end for;
-	return L,M;
-end function;
-
-orankOneIdempotent:=function(A)
-	Ofi:=maximalOrderFinite(A);
-	Oinf:=maximalOrderInfinite(A);
-	L,M:=ointerOrders(Basis(Ofi),Basis(Oinf));
-	C:=AssociativeAlgebra<F,#M | M>;
-	x:=orthSysOfPrimIdems(C);
-	es:=[&+[y[i]*l : i->l in L]: y in x];
-	return es[Index([Dimension(sub<A | [e*a*e : a in Basis(A)]>) : e in es],1)];
-end function;
 
 rebaseOfi:=function(Ofi,nA,phi)
 	M:=Matrix([Coordinates(nA,phi(e)): e in Basis(Ofi)]);
@@ -786,22 +711,6 @@ splitSquare:=function(a)
 	end for;
 	return c,d;
 end function;	
-
-/*The form solved is a1 x1^2 + a1 x1x2 + a1 a2 x2^2 + c x3*/
-osolveTernForm:=function(a1,a2,c)
-	A:=AssociativeAlgebra(QuaternionAlgebra<K | a2,a1/c>);
-	e:=orankOneIdempotent(A);
-	phi:=idemToIso(A,e);
-	x := Matrix(K,[[0,1],[0,0]]) @@ phi;
-	L:=Coordinates(A,x);
-	while L[1] eq 0 do
-		a:=randPolyFF(10);
-		c,d:=splitSquare(a);
-		x := Matrix(K,[[a,c],[d,a]]) @@ phi;
-		L:=Coordinates(A,x);
-	end while;
-	return L[3]/L[1],L[4]/L[1];
-end function;
 
 solveTernForm:=function(a1,a2,c)
 	A:=AssociativeAlgebra(QuaternionAlgebra<K | a2,a1/c>);
@@ -1255,7 +1164,6 @@ d is the degree of the random polynomials appearing in the generation of the qua
 reduced, if true, sets the procedure to generate values a1,a2,a3,a4 instead of a generic non degenerate quadratic form.
 isotropic, if true, generates the matrix Q from scrambling the basis of a matrix algebra. As as result, the quadratic form can not be anisotropic.
 Note: The flag reduced and isotropic are not compatible. If both are set on, isotropic will be ignored
-newImpl decides the use of the newer implementation of interOrders. Should always be left on true.
 toTheEnd: If set on true, the procedure will compute a solution of the quadratic form. If set on false, the procedure will simply compute a common value of both binary forms, but it will not call the ternary form solver. This is useful on the calculator, when computing maximalOrder might be to expensive but we still want to see the result of the splitting.
 */
 
@@ -1280,7 +1188,7 @@ testQuaternForm:=procedure(:d:=2,reduced:=false,isotropic:=false,toTheEnd:=false
 	end if;
 end procedure;
 
-testWith:=procedure(a1,a2,a3,a4:toTheEnd:=false)
+testWith:=procedure(a1,a2,a3,a4:toTheEnd:=true)
 	Q:=DiagonalJoin(UpperTriangularMatrix(K,[a1,a1,a1*a2]),UpperTriangularMatrix(K,[a3,a3,a3*a4]));
 	print Q;
 	time found,xs := solveQuaternaryForm(Q:toTheEnd:=toTheEnd,timing:=true);
@@ -1291,5 +1199,3 @@ testWith:=procedure(a1,a2,a3,a4:toTheEnd:=false)
 		printf "So, the solution we found in the end is as follows: \n%o\n When we plug it in the quadratic form, we obtain %o.\n",xs,s;
 	end if;
 end procedure;
-
-
