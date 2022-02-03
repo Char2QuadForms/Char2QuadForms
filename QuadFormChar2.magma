@@ -1,4 +1,4 @@
-k:=1;
+k:=4;
 q:=2^k;
 if k eq 1 then
 	F:=FiniteField(q);
@@ -1037,11 +1037,11 @@ solveQuaternaryForm:=function(Q:toTheEnd:=false,verbose:=false)
 	end if;
 	
 	//Now that pathological cases have been dealt with, we can work on splitting the quaternary form.
-	worked1,conds,c,tested:=dealWithPoles(as);
+	worked1,conds,c,tested:=dealWithPoles(as:verbose:=verbose);
 	if not worked1 then
 		return false,[];
 	end if;
-	worked2,c:=dealWithOdds(as,tested,c);
+	worked2,c:=dealWithOdds(as,tested,c:verbose:=verbose);
 	if not worked2 then
 		return false,[];
 	end if;
@@ -1178,3 +1178,5 @@ testWith:=procedure(a1,a2,a3,a4:toTheEnd:=true)
 		printf "So, the solution we found in the end is as follows: \n%o\n When we plug it in the quadratic form, we obtain %o.\n",xs,s;
 	end if;
 end procedure;
+
+testQuaternForm(:d:=1,reduced:=true);
