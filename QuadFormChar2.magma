@@ -1052,13 +1052,16 @@ solveQuaternaryForm:=function(Q:toTheEnd:=false,verbose:=false)
 		end if;
 		return false,[];
 	end if;
+
 	if verbose then
 		printf "--------------- \n All modular conditions for splitting have been determined. I did not find any obstacle to the form's isotropy. I now need to find a prime polynomial which satisfies all the modular conditions.\n I will call findH with the following input: \n conds: \n %o \n c : %o \n hinf: %o\n modinf: %o \n powinf: %o\n",conds,c,hinf,modinf,powinf;
-	end if;
-	h:=findH(conds,c,hinf,modinf,powinf);
-	if verbose then
+		time h:=findH(conds,c,hinf,modinf,powinf);
+		print "The time above is how long it took to find a suitable irreducible polynomial to build our common value.";
 		printf "--------- \n I found H = %o. It should be a common value of both binary forms.\n",h;
+	else
+		h:=findH(conds,c,hinf,modinf,powinf);
 	end if;
+
 	if toTheEnd then
 		if verbose then
 			time x1,x2:=solveTernForm(as[1],as[2],h);
@@ -1178,5 +1181,3 @@ testWith:=procedure(a1,a2,a3,a4:toTheEnd:=true)
 		printf "So, the solution we found in the end is as follows: \n%o\n When we plug it in the quadratic form, we obtain %o.\n",xs,s;
 	end if;
 end procedure;
-
-testQuaternForm(:d:=1,reduced:=true);
