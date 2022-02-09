@@ -151,17 +151,6 @@ randIsoMat:=function(n:d:=1)
 	return A, g * f;
 end function;
 
-randIsoQuat:=function(:d:=2,scramble:=false)
-	a:=randRatFunFF(d:nonZero:=true);
-	b:=randRatFunFF(d:nonZero:=true);
-	B:=QuaternionAlgebra<K| a,b>;
-	Ba:=AssociativeAlgebra(B);
-	if scramble then
-		B:=scrambleBasis(Ba:d:=d);
-	end if;
-	return Ba;
-end function;	
-
 randIsotropicForm:=function(:d:=2)
 	A,f:=randIsoMat(2:d:=d);
 	Q:=UpperTriangularMatrix(K,[(i eq j) select Determinant(BasisElement(A,i) @@ f) else Determinant(M+N) + Determinant(M) + Determinant(N) where M is (BasisElement(A,i) @@ f) where N is (BasisElement(A,j) @@ f): j in [i..4], i in [1..4]]);
@@ -1075,62 +1064,6 @@ end function;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //						Test Procedures							//
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-testCanonicalForm:=procedure()
-	Q:=randQuaternaryForm();
-	print Q;
-	Norms,Vects:=canonicalForm(Q);
-	print Norms;
-	printf "Are the brackets correct? %o \n",DotProduct(Vects[1],Vects[2]) eq 1 and DotProduct(Vects[3],Vects[4]) eq 1;
-	printf "Are they orthogonal? %o \n",&and[DotProduct(e,f) eq 0: e in Vects[1..2], f in Vects[3..4]];
-end procedure;
-
-//maximalOrderFinite works for matrix algebras over K. It is still pretty slow when the discriminant of the initial order has degree over 32
-testMaximalOrderFinite:=procedure(:b:=16,d:=1,quats:=false,n:=2)
-	repeat
-		if quats then
-			A:=randIsoQuat();	
-		else
-			A:=randIsoMat(2:d:=d);
-		end if;
-	until Degree(disc(initialAlmostOrder(A))) le b;	//For now, the execution time grows quickly with the Discriminant of the inital order. 32 takes between 15 and 30 seconds.
-	if not quats then
-		D:=K!1;
-	end if;
-	print "Timing the call to maximalOrderFinite";
-	time O:=maximalOrderFinite(A);
-	if not quats then
-		printf "We test that the order is maximal in A and get %o.\n", disc(Basis(O)) eq monic(D)^2;
-	end if;
-end procedure;
-
-testMaximalOrderInfinite:=function(:b:=16,n:=2)
-	repeat
-		A:=randIsoMat(2);
-	until Degree(disc(initialAlmostOrder(A))) le b;	//For now, the execution time grows quickly with the Discriminant of the inital order. 32 takes between 15 and 30 seconds.
-	print "Timing the call to maximalOrderInfinite";
-	time O:=maximalOrderInfinite(A);
-	return O;
-end function;
-
-testRankOneIdem:=procedure(n)
-	A:=randIsoMat(n);
-	print "Timing the call to rankOneIdempotent:";
-	time e:=rankOneIdempotent(A);
-	printf "We test that the output is a rank one idempotent of A, and obtain %o.\n",e in A and e^2 eq e and Dimension(sub<A | [e*a*e : a in Basis(A)]>) eq 1;
-end procedure;
-
-testTernForm:=procedure(a1,a2,c)
-	printf "Solving the following equation: %o x1^2 + %o x1 x2 + %o x2^2 = c \n",a1,a1,a1*a2;
-	x1,x2:=solveTernForm(a1,a2,c);
-	printf "Found the following solution: x1 = %o and x2 = %o.\n",x1,x2;
-	printf "Checking that the solution is correct... %o\n",a1*x1^2 + a1 * x1 * x2 + a1*a2*x2^2 eq c;
-end procedure;
-
-checkSolution:=function(aOdds,aEvens,xOdds,xEvens)
-	return &+[aOdds[i]*(xOdds[i]^2+xOdds[i]*xEvens[i]+aEvens[i]*xEvens[i]^2): i in [1,2]] eq 0;
-end function;
-
 quatFormEval:=function(Q,xs)
 	return &+[Q[i,j]*xs[i]*xs[j]: i,j in [1..4]];
 end function;
