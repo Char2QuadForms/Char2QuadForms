@@ -862,12 +862,13 @@ commonValuePole:=function(f,as)
 		c,N:=goFish(f,as);
 		return true,c,N;
 	end if;
-	return false,0,0;
+	return false,1,1;
 end function;
 
 dealWithPoles:=function(as:verbose:=false)
-	tested:=[];
-	conds:=[];
+	tested:=[R|];
+	conds:=[R|];
+	mods:=[R|];
 	c:=R!1;
 	for f in Factorisation(Denominator(as[2])) cat Factorisation(Denominator(as[4])) do
 		if not f[1] in tested then
@@ -879,11 +880,12 @@ dealWithPoles:=function(as:verbose:=false)
 				end if;
 				return false,[],0,[];
 			end if;
-			Append(~conds,<f[1]^modu,h>);
+			Append(~conds,h);
+			Append(~mods,f[1]^modu);
 			c*:=f[1]^Valuation(h,f[1]);
 		end if;
 	end for;
-	return true,conds,c,tested;
+	return true,conds,mods,c,tested;
 end function;		
 
 commonValueOdds:=function(f,as)
@@ -902,7 +904,7 @@ commonValueOdds:=function(f,as)
 	end if;
 end function;
 
-dealWithOdds:=function(as,tested,c:verbose:=false)
+dealWithOdds:=function(as,tested,c,conds,mods:verbose:=false)
 	for f in Factorisation(R!as[1]) cat Factorisation(R!as[3]) do
 		if not f[1] in tested and IsOdd(f[2]) then
 			found,mult:=commonValueOdds(f[1],as);
@@ -912,10 +914,14 @@ dealWithOdds:=function(as,tested,c:verbose:=false)
 				end if;
 				return false,[],0;
 			end if;
-			c*:=f[1]^mult;
+			if mult eq 1 then
+				c*:=f[1];
+				Append(~conds,0);
+				Append(~mods,f[1]);
+			end if;
 		end if;
 	end for;
-	return true,c;
+	return true,c,conds,mods;
 end function;
 
 dealWithInf:=function(as:verbose:=false)
@@ -928,57 +934,67 @@ dealWithInf:=function(as:verbose:=false)
 	end if;
 	if Max([Valuation(Denominator(ias[i]),X): i in [2..4 by 2]]) gt 0 then
 		found,hinf,modinf:=commonValuePole(X,ias);	
+		v:=Valuation(hinf,X);
+		parity:=v mod 2;
+		hinf/:=X^v;
+		modinf-:=parity;
 	elif IsOdd(Degree(as[1]) + Degree(as[3])) then
 		found,mult:=commonValueOdds(X,ias);
-		hinf:=X^mult;
+		hinf:=1;
+		parity:=mult;
 		modinf:=0;
 	else
 		found:=true;
 		hinf:=1;
 		modinf:=0;
+		parity:=0;
 	end if;
-	return found,hinf,X^modinf,m;
+	return found,hinf,modinf,(m+parity) mod 2;
 end function;
 
-//tests if an irreducible polynomial h (doesn't test irreducibility) fulfills all the conditions to be the correct choice for splitting.
-testH:=function(conds,h,hinf,modinf,powinf)
-	for cond in conds do
-		k:=quo<R | cond[1]>;
-		if not k!(h) eq k!cond[2] then
-			return false;
-		end if;
-	end for;
-	if modinf ne 1 then
-		k:=quo<R | modinf>;
-		ih:= (x^(powinf)*h) @ i;
-		while not ih in R do
-			ih*:=x^2;
-		end while;
-		if not k!ih eq k!hinf then
-			return false;
-		end if;
+//Returns a polynomial f of degree d such that (f*X^n+g)*a = cond mod inf^modu (for any polynomial g and n = degree(g)+1)
+//Requires modu > 0
+factorModInf:=function(cond,a,modu)
+	k:=quo<R | X^modu>;
+	ia:=k!(X^Degree(a)*(a @ i));
+	f:=R!(k!cond/ia);
+	return R!(Reverse(coefficientsUpTo(f,modu)));
+end function;
+	
+findH:=function(conds,mods,condInf,modInf,parityCondition,c)
+	modFin:=&*mods;
+	if modFin eq 1 then
+		condFin:=0;
+	else
+		condFin:=ChineseRemainderTheorem(conds,mods);
 	end if;
-	return true;
-end function;
 
-findH:=function(conds,c,hinf,modinf,powinf)
-	d:=(Valuation(hinf,X) + powinf + Degree(c)) mod 2;
-	while true do
-		if d gt 0 then
-			Irrs:=PrimePolynomials(R,d);
-		else
-			Irrs:=[a: a in F | a ne 0];
+	if modInf eq 0 then
+		factorInf:=R!0;
+	else
+		factorInf:=factorModInf(condInf,modFin,modInf);
+	end if;
+
+//At this point, we need polynomials of the form hc = condFin+(factorInf*X^n+g)*modFin
+//such that n = Degree(g)+1 and Degree(g)+Max(Degree(factorInf)+1,0)+Degree(modFin) = parityCondition mod 2
+//We look for an hc such that hc/c is prime
+	dFin:=Degree(modFin);
+	dg:=(parityCondition+Max(Degree(factorInf)+1,0)+dFin) mod 2;
+	count:=0;
+	repeat
+//The next bound is somewhat arbitrary but gives a good change to find a prime polynomial of this degree
+		if count gt 5*(dFin+dg+modInf) then
+			dg+:=2;
+			count:=0;
 		end if;
-		for h in Irrs do
-			hc:=c*h;
-			if testH(conds,hc,hinf,modinf,powinf) then
-				return hc;
-			end if;
-		end for;
-		d+:=2;
-	end while;
+		g:=randPolyFF(dg:precise:=true);
+		hc:=condFin+(factorInf*X^(dg+1)+g)*modFin;
+		count+:=1;
+	until IsPrime(ExactQuotient(hc,c));
+	return hc;
 end function;
 
+	
 solveQuaternaryForm:=function(Q:toTheEnd:=false,verbose:=false)
 	deg,can,M1:=canonicalForm(Q);
 	if deg then
@@ -1022,15 +1038,15 @@ solveQuaternaryForm:=function(Q:toTheEnd:=false,verbose:=false)
 	end if;
 	
 	//Now that pathological cases have been dealt with, we can work on splitting the quaternary form.
-	worked1,conds,c,tested:=dealWithPoles(as:verbose:=verbose);
+	worked1,conds,mods,c,tested:=dealWithPoles(as:verbose:=verbose);
 	if not worked1 then
 		return false,[];
 	end if;
-	worked2,c:=dealWithOdds(as,tested,c:verbose:=verbose);
+	worked2,c,conds,mods:=dealWithOdds(as,tested,c,conds,mods:verbose:=verbose);
 	if not worked2 then
 		return false,[];
 	end if;
-	worked3,hinf,modinf,powinf:=dealWithInf(as:verbose:=verbose);
+	worked3,hinf,modinf,parityCondition:=dealWithInf(as:verbose:=verbose);
 	if not worked3 then
 		if verbose then
 			printf "Working at the infinite place, I could not find a common value for both binary forms. Therefore, this quadratic form is anisotropic.\n";
@@ -1038,12 +1054,12 @@ solveQuaternaryForm:=function(Q:toTheEnd:=false,verbose:=false)
 		return false,[];
 	end if;
 	if verbose then
-		printf "--------------- \n All modular conditions for splitting have been determined. I did not find any obstacle to the form's isotropy. I now need to find a prime polynomial which satisfies all the modular conditions.\n I will call findH with the following input: \n conds: \n %o \n c : %o \n hinf: %o\n modinf: %o \n powinf: %o\n",conds,c,hinf,modinf,powinf;
-		time h:=findH(conds,c,hinf,modinf,powinf);
+		printf "--------------- \n All modular conditions for splitting have been determined. I did not find any obstacle to the form's isotropy. I now need to find a prime polynomial which satisfies all the modular conditions.\n I will call findH with the following input: \n conds: \n %o \n mods :\n %o \n hinf: %o\n modinf: %o \n parityCondition : %o\n c: %o\n",conds,mods,hinf,modinf,parityCondition,c;
+		time h:=findH(conds,mods,hinf,modinf,parityCondition,c);
 		print "The time above is how long it took to find a suitable irreducible polynomial to build our common value.";
 		printf "--------- \n I found H = %o. It should be a common value of both binary forms.\n",h;
 	else
-		h:=findH(conds,c,hinf,modinf,powinf);
+		h:=findH(conds,mods,hinf,modinf,parityCondition,c);
 	end if;
 
 	if toTheEnd then
@@ -1076,7 +1092,8 @@ Note: The flag reduced and isotropic are not compatible. If both are set on, iso
 toTheEnd: If set on true, the procedure will compute a solution of the quadratic form. If set on false, the procedure will simply compute a common value of both binary forms, but it will not call the ternary form solver. This is useful on the calculator, when computing maximalOrder might be to expensive but we still want to see the result of the splitting.
 */
 
-testQuaternForm:=procedure(:d:=2,reduced:=false,isotropic:=false,toTheEnd:=false)
+//Generates a random quaternary quadratic form, solves it and checks whether the solution is correct.
+testQuaternForm:=procedure(:d:=2,reduced:=false,isotropic:=false,toTheEnd:=true)
 	if reduced then
 		if isotropic then
 			print "Flag isotropic ignored because flag reduced is also set";
@@ -1097,6 +1114,7 @@ testQuaternForm:=procedure(:d:=2,reduced:=false,isotropic:=false,toTheEnd:=false
 	end if;
 end procedure;
 
+//Solves the quaternary form a1(x1^2+x1x2+a2x2^2) + a3(x3^2+x3x4+a4x4^2) and checks that the solution is correct.
 testWith:=procedure(a1,a2,a3,a4:toTheEnd:=true)
 	Q:=DiagonalJoin(UpperTriangularMatrix(K,[a1,a1,a1*a2]),UpperTriangularMatrix(K,[a3,a3,a3*a4]));
 	print Q;
